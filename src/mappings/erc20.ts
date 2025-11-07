@@ -4,9 +4,9 @@
  * https://github.com/OpenZeppelin/openzeppelin-subgraphs/blob/main/src/fetch/erc20.ts
  * https://github.com/OpenZeppelin/openzeppelin-subgraphs/blob/main/src/fetch/account.ts
  */
-import { Address, BigInt } from '@graphprotocol/graph-ts'
-import { constants, decimals, events, transactions } from '@amxx/graphprotocol-utils'
-import { Account, ERC20Balance, ERC20Contract, ERC20Transfer } from '../../generated/schema'
+import { Address, BigInt, ethereum } from '@graphprotocol/graph-ts'
+import { constants, decimals, events } from '@amxx/graphprotocol-utils'
+import { Account, ERC20Balance, ERC20Contract, ERC20Transfer, Transaction } from '../../generated/schema'
 import { ERC20, Transfer as TransferEvent } from '../../generated/ERC20/ERC20'
 
 export function fetchAccount(address: Address): Account {
@@ -60,11 +60,24 @@ export function fetchERC20Balance(contract: ERC20Contract, account: Account | nu
   return balance as ERC20Balance
 }
 
+// Transaction is immutable so we do not want to save it again if we receive same key again.
+export function fetchTransactions(event: ethereum.Event): Transaction {
+  const key = event.transaction.hash.toHex()
+  let tx = Transaction.load(key)
+  if (!tx) {
+    tx = new Transaction(event.transaction.hash.toHex())
+    tx.timestamp = event.block.timestamp
+    tx.blockNumber = event.block.number
+    tx.save()
+  }
+  return tx as Transaction
+}
+
 export function handleTransfer(event: TransferEvent): void {
   const contract = fetchERC20(event.address)
   const ev = new ERC20Transfer(events.id(event))
   ev.emitter = contract.id
-  ev.transaction = transactions.log(event).id
+  ev.transaction = fetchTransactions(event).id
   ev.timestamp = event.block.timestamp
   ev.contract = contract.id
   ev.value = decimals.toDecimals(event.params.value, contract.decimals.toI32())
